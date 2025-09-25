@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable, List, Sequence, Tuple
 
 import fitz  # type: ignore[attr-defined]
+
 
 PRESETS: dict[str, Tuple[float, float]] = {
     "a4": (595.276, 841.89),
@@ -20,7 +21,7 @@ class PageSizeError(ValueError):
 
 
 def parse_page_size(value: str | Tuple[float, float]) -> Tuple[float, float]:
-    """Parse a named or explicit page size definition into (width, height)."""
+    """Parse a named or explicit page size definition into ``(width, height)``."""
 
     if isinstance(value, tuple):
         if len(value) != 2:
@@ -133,13 +134,13 @@ def place_pdf(
     dest_rect = fitz.Rect(x0, y0, x0 + nw, y0 + nh)
 
     if debug:
-        shape = dst_page.new_shape()
+        shape = dst_page.new_shape()  # type: ignore[attr-defined]
         shape.draw_rect(target_rect)
         shape.draw_rect(dest_rect)
         shape.finish(width=0.6)
         shape.commit()
 
-    dst_page.show_pdf_page(dest_rect, src_doc, pno=pno, clip=clip_rect, rotate=rot)
+    dst_page.show_pdf_page(dest_rect, src_doc, pno=pno, clip=clip_rect, rotate=rot)  # type: ignore[attr-defined]
 
 
 def auto_detect_left_ratio(
@@ -155,7 +156,7 @@ def auto_detect_left_ratio(
     """Estimate how much of the page width to keep based on blank space detection."""
 
     scale = dpi / 72.0
-    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), colorspace=fitz.csGRAY, alpha=False)
+    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), colorspace=fitz.csGRAY, alpha=False)  # type: ignore[attr-defined]
     width, height = pix.width, pix.height
     samples = pix.samples
 
@@ -214,6 +215,13 @@ def _compute_clips(
     return clips
 
 
+def _resolve_page_dimensions(cfg: ConversionConfig) -> Tuple[float, float]:
+    out_w, out_h = parse_page_size(cfg.page)
+    if out_h < out_w:
+        out_w, out_h = out_h, out_w
+    return out_w, out_h
+
+
 def convert_pdf(
     input_path: str | Path,
     output_path: str | Path,
@@ -228,10 +236,7 @@ def convert_pdf(
     if not input_path.exists():
         raise FileNotFoundError(f"Input PDF not found: {input_path}")
 
-    out_w, out_h = parse_page_size(cfg.page)
-    if out_h < out_w:
-        out_w, out_h = out_h, out_w
-
+    out_w, out_h = _resolve_page_dimensions(cfg)
     target_rect = fitz.Rect(cfg.margin, cfg.margin, out_w - cfg.margin, out_h - cfg.margin)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -259,3 +264,77 @@ def convert_pdf(
             )
 
         dst.save(str(output_path))
+
+
+def convert_to_combined_pdf(
+    input_paths: Sequence[str | Path],
+    output_path: str | Path,
+    config: ConversionConfig | None = None,
+    *,
+    gap: float | None = None,
+) -> None:
+    """Convert multiple label PDFs and impose two labels per output page."""
+
+    cfg = config or ConversionConfig()
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    out_w, out_h = _resolve_page_dimensions(cfg)
+    available_height = out_h - 2 * cfg.margin
+    if available_height <= 0:
+        raise ValueError("Configured margins leave no space for label placement.")
+
+    stack_gap = cfg.margin if gap is None else max(0.0, gap)
+    stack_gap = min(stack_gap, max(0.0, available_height))
+    slot_height = (available_height - stack_gap) / 2 if available_height > stack_gap else available_height / 2
+    slot_height = max(1.0, slot_height)
+
+    top_rect = fitz.Rect(cfg.margin, cfg.margin, out_w - cfg.margin, cfg.margin + slot_height)
+    bottom_rect = fitz.Rect(cfg.margin, out_h - cfg.margin - slot_height, out_w - cfg.margin, out_h - cfg.margin)
+
+    dst = fitz.open()
+    documents: List[fitz.Document] = []
+    slot_index = 0
+    current_page: fitz.Page | None = None
+
+    try:
+        for input_path in input_paths:
+            source = fitz.open(Path(input_path))
+            documents.append(source)
+            pages = list(range(len(source)))
+            clips = _compute_clips(pages, source, cfg)
+
+            for idx, clip in zip(pages, clips):
+                if slot_index == 0:
+                    current_page = dst.new_page(width=out_w, height=out_h)  # type: ignore[attr-defined]
+                    target = top_rect
+                else:
+                    if current_page is None:
+                        current_page = dst.new_page(width=out_w, height=out_h)  # type: ignore[attr-defined]
+                    target = bottom_rect
+
+                assert current_page is not None
+                place_pdf(
+                    current_page,
+                    source,
+                    idx,
+                    clip,
+                    target,
+                    rotation=cfg.rotate,
+                    fit_mode=cfg.fit,
+                    extra_scale=cfg.scale,
+                    fill_width=cfg.fill_width,
+                    halign=cfg.halign,
+                    halign_offset=cfg.halign_offset,
+                    halign_bleed=cfg.halign_bleed,
+                    valign="top",
+                    debug=cfg.debug_boxes,
+                )
+
+                slot_index = (slot_index + 1) % 2
+
+    finally:
+        dst.save(str(output_path))
+        dst.close()
+        for doc in documents:
+            doc.close()

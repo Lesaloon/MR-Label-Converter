@@ -10,6 +10,7 @@ Library + FastAPI web service that reshapes Mondial Relay / InPost PDF labels in
 - ✅ FastAPI backend that exposes a `/convert` endpoint and a `/health` check
 - ✅ Minimal frontend (`/ui`) for drag-and-drop style conversions directly from the browser
 - ✅ Batch support: upload multiple PDFs and receive a single ZIP archive with all converted labels
+  - Each batch also includes a ``combined-two-per-page.pdf`` that merges the uploaded labels two-per-page for easier printing
 - ♻️ Backwards-compatible CLI wrapper via `labels_fix.py` for existing scripts
 
 ## Prerequisites
@@ -62,7 +63,7 @@ The API now emits detailed messages when conversions error out, and the HTTP res
 ## API Reference
 
 - `GET /health` → `{ "status": "ok" }`
-- `POST /convert` → accepts one or more `files` (multipart form-data). Responds with a ZIP archive containing every converted PDF. Returns `415` for non-PDF uploads.
+- `POST /convert` → accepts one or more `files` (multipart form-data). Responds with a ZIP archive containing every converted PDF plus a `combined-two-per-page.pdf` merge. Returns `415` for non-PDF uploads.
 
 Example `curl` usage:
 

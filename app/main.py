@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from starlette.responses import Response
 
-from label_converter import ConversionConfig, convert_pdf
+from label_converter import ConversionConfig, convert_pdf, convert_to_combined_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,8 @@ async def convert_endpoint(
 
     tmp_dir_path = Path(mkdtemp(prefix="label-converter-"))
     converted_entries: list[tuple[Path, str]] = []
+    original_inputs: list[Path] = []
+    config = ConversionConfig()
 
     try:
         for idx, upload in enumerate(files, start=1):
@@ -98,9 +100,15 @@ async def convert_endpoint(
 
             await upload.seek(0)
 
-            convert_pdf(input_path, output_path, ConversionConfig())
+            convert_pdf(input_path, output_path, config)
             arcname = _safe_output_name(upload.filename, idx)
             converted_entries.append((output_path, arcname))
+            original_inputs.append(input_path)
+
+        if original_inputs:
+            combined_path = tmp_dir_path / "combined-two-per-page.pdf"
+            convert_to_combined_pdf(original_inputs, combined_path, config)
+            converted_entries.append((combined_path, "combined-two-per-page.pdf"))
 
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
