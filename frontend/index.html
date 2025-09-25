@@ -89,8 +89,8 @@
         Upload a Mondial Relay / InPost shipping label and receive a layout-ready PDF in seconds.
       </p>
       <form id="upload-form">
-        <input type="file" id="file" name="file" accept="application/pdf" required />
-        <button type="submit">Convert label</button>
+        <input type="file" id="files" name="files" accept="application/pdf" multiple required />
+        <button type="submit">Convert labels</button>
       </form>
       <div id="status" role="status"></div>
       <footer>
@@ -110,18 +110,18 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const fileInput = form.querySelector("input[type='file']");
-        const file = fileInput.files?.[0];
+        const files = Array.from(fileInput.files || []);
 
-        if (!file) {
-          setStatus("Please select a PDF file to convert.", true);
+        if (files.length === 0) {
+          setStatus("Please select at least one PDF file to convert.", true);
           return;
         }
 
         const formData = new FormData();
-        formData.append("file", file, file.name);
+        files.forEach((file) => formData.append("files", file, file.name));
 
         submitBtn.disabled = true;
-        setStatus("Converting… this usually takes just a moment.");
+        setStatus(`Converting ${files.length} label${files.length > 1 ? "s" : ""}…`);
 
         try {
           const response = await fetch("/convert", {
@@ -136,7 +136,7 @@
 
           const blob = await response.blob();
           const disposition = response.headers.get("Content-Disposition");
-          let filename = "converted.pdf";
+          let filename = "converted-labels.zip";
           if (disposition) {
             const match = /filename="?([^";]+)"?/i.exec(disposition);
             if (match?.[1]) {
@@ -153,7 +153,7 @@
           document.body.removeChild(anchor);
           window.URL.revokeObjectURL(url);
 
-          setStatus("Done! Your converted label was downloaded.");
+          setStatus("Done! Your converted labels were downloaded as a ZIP archive.");
           form.reset();
         } catch (error) {
           console.error(error);

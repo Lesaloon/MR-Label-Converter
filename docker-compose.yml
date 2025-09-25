@@ -1,3 +1,5 @@
+name: label-converter
+
 services:
   backend:
     build:

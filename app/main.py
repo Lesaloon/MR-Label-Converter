@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import re
 import shutil
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from starlette.responses import Response
@@ -60,39 +63,66 @@ def _validate_upload(upload: UploadFile) -> None:
         raise HTTPException(status_code=415, detail="Only PDF files are supported.")
 
 
-@app.post("/convert", summary="Convert a Mondial Relay label", tags=["conversion"])
-async def convert_endpoint(file: Annotated[UploadFile, File(...)]) -> FileResponse:
-    _validate_upload(file)
+def _safe_output_name(original: str | None, index: int) -> str:
+    fallback = f"file-{index}"
+    if not original:
+        base = fallback
+    else:
+        base = Path(original).stem or fallback
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._") or fallback
+    return f"{sanitized}-converted.pdf"
+
+
+@app.post("/convert", summary="Convert Mondial Relay labels", tags=["conversion"], response_model=None)
+async def convert_endpoint(
+    files: Annotated[
+        list[UploadFile],
+        File(description="One or more PDF files", media_type="application/pdf"),
+    ]
+) -> Response:
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded.")
 
     tmp_dir_path = Path(mkdtemp(prefix="label-converter-"))
-    input_path = tmp_dir_path / "input.pdf"
-    output_path = tmp_dir_path / "output.pdf"
+    converted_entries: list[tuple[Path, str]] = []
 
     try:
-        with input_path.open("wb") as buffer:
-            while chunk := await file.read(4096):
-                buffer.write(chunk)
+        for idx, upload in enumerate(files, start=1):
+            _validate_upload(upload)
+            input_path = tmp_dir_path / f"input-{idx}.pdf"
+            output_path = tmp_dir_path / f"output-{idx}.pdf"
 
-        await file.seek(0)
+            with input_path.open("wb") as buffer:
+                while chunk := await upload.read(1 << 16):
+                    buffer.write(chunk)
 
-        convert_pdf(input_path, output_path, ConversionConfig())
+            await upload.seek(0)
+
+            convert_pdf(input_path, output_path, ConversionConfig())
+            arcname = _safe_output_name(upload.filename, idx)
+            converted_entries.append((output_path, arcname))
+
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for file_path, arcname in converted_entries:
+                archive.write(file_path, arcname=arcname)
+        zip_buffer.seek(0)
+
     except FileNotFoundError as exc:
         shutil.rmtree(tmp_dir_path, ignore_errors=True)
         logger.warning("Input PDF missing during conversion: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive guard for unexpected failures
         shutil.rmtree(tmp_dir_path, ignore_errors=True)
-        logger.exception("Conversion failed for '%s'", file.filename)
+        filenames = ", ".join(filter(None, (f.filename for f in files))) or "<unnamed>"
+        logger.exception("Conversion failed for: %s", filenames)
         raise HTTPException(status_code=500, detail=f"Conversion failed: {exc}") from exc
 
-    filename = Path(file.filename).stem + "-converted.pdf"
     background = BackgroundTask(shutil.rmtree, tmp_dir_path, ignore_errors=True)
-    return FileResponse(
-        path=output_path,
-        media_type="application/pdf",
-        filename=filename,
-        background=background,
-    )
+    headers = {
+        "Content-Disposition": "attachment; filename=converted-labels.zip",
+    }
+    return StreamingResponse(zip_buffer, media_type="application/zip", headers=headers, background=background)
 
 
 if FRONTEND_DIR.exists():

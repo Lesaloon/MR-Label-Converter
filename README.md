@@ -9,6 +9,7 @@ Library + FastAPI web service that reshapes Mondial Relay / InPost PDF labels in
 - ✅ Reusable Python library (`label_converter`) with configurable conversion settings
 - ✅ FastAPI backend that exposes a `/convert` endpoint and a `/health` check
 - ✅ Minimal frontend (`/ui`) for drag-and-drop style conversions directly from the browser
+- ✅ Batch support: upload multiple PDFs and receive a single ZIP archive with all converted labels
 - ♻️ Backwards-compatible CLI wrapper via `labels_fix.py` for existing scripts
 
 ## Prerequisites
@@ -46,6 +47,8 @@ docker compose up --build
 
 The nginx frontend proxies `/convert` and `/health` to the backend container, so the static UI continues to call relative URLs.
 
+> Containers start under the project name `label-converter`, so they'll appear as `label-converter-backend-1`, `label-converter-frontend-1`, etc., instead of inheriting the repository folder name.
+
 ### Inspecting Logs
 
 If a conversion fails, check the backend container logs for the stack trace:
@@ -59,14 +62,15 @@ The API now emits detailed messages when conversions error out, and the HTTP res
 ## API Reference
 
 - `GET /health` → `{ "status": "ok" }`
-- `POST /convert` → accepts a form-data upload named `file`; responds with the converted PDF. Returns `415` for non-PDF uploads.
+- `POST /convert` → accepts one or more `files` (multipart form-data). Responds with a ZIP archive containing every converted PDF. Returns `415` for non-PDF uploads.
 
 Example `curl` usage:
 
 ```bash
 curl -X POST \
-  -F "file=@inputs/your-label.pdf" \
-  --output outputs/your-label-converted.pdf \
+  -F "files=@inputs/your-label.pdf" \
+  -F "files=@inputs/second-label.pdf" \
+  --output outputs/converted-labels.zip \
   http://127.0.0.1:8000/convert
 ```
 
@@ -78,7 +82,7 @@ from label_converter import ConversionConfig, convert_pdf
 convert_pdf(
   "inputs/your-label.pdf",
   "outputs/your-label.pdf",
-    ConversionConfig(scale=2.0, fit="contain"),
+  ConversionConfig(scale=2.0, fit="contain"),
 )
 ```
 
