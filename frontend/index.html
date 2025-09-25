@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mondial Relay Label Converter</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: radial-gradient(circle at top, #f6f8fc, #e8ecf6);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      main {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 18px;
+        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.15);
+        padding: 3rem;
+        max-width: 520px;
+        width: 100%;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 2rem;
+        color: #1f2937;
+      }
+      p.description {
+        color: #4b5563;
+        margin-bottom: 2rem;
+      }
+      form {
+        display: grid;
+        gap: 1rem;
+      }
+      input[type="file"] {
+        border: 2px dashed #94a3b8;
+        border-radius: 12px;
+        padding: 1.5rem 1rem;
+        background: rgba(148, 163, 184, 0.08);
+        color: #0f172a;
+      }
+      button {
+        appearance: none;
+        border: none;
+        border-radius: 999px;
+        padding: 0.9rem 1.6rem;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #fff;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px rgba(99, 102, 241, 0.22);
+      }
+      #status {
+        min-height: 1.5rem;
+        font-size: 0.95rem;
+        color: #1f2937;
+      }
+      #status.error {
+        color: #dc2626;
+      }
+      footer {
+        margin-top: 2rem;
+        font-size: 0.85rem;
+        color: #64748b;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Mondial Relay Label Converter</h1>
+      <p class="description">
+        Upload a Mondial Relay / InPost shipping label and receive a layout-ready PDF in seconds.
+      </p>
+      <form id="upload-form">
+        <input type="file" id="file" name="file" accept="application/pdf" required />
+        <button type="submit">Convert label</button>
+      </form>
+      <div id="status" role="status"></div>
+      <footer>
+        Powered by FastAPI · Files aren't stored on the server—each conversion happens in-memory.
+      </footer>
+    </main>
+    <script>
+      const form = document.getElementById("upload-form");
+      const statusBox = document.getElementById("status");
+      const submitBtn = form.querySelector("button");
+
+      const setStatus = (message, isError = false) => {
+        statusBox.textContent = message;
+        statusBox.classList.toggle("error", isError);
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const fileInput = form.querySelector("input[type='file']");
+        const file = fileInput.files?.[0];
+
+        if (!file) {
+          setStatus("Please select a PDF file to convert.", true);
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", file, file.name);
+
+        submitBtn.disabled = true;
+        setStatus("Converting… this usually takes just a moment.");
+
+        try {
+          const response = await fetch("/convert", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || "Conversion failed.");
+          }
+
+          const blob = await response.blob();
+          const disposition = response.headers.get("Content-Disposition");
+          let filename = "converted.pdf";
+          if (disposition) {
+            const match = /filename="?([^";]+)"?/i.exec(disposition);
+            if (match?.[1]) {
+              filename = match[1];
+            }
+          }
+
+          const url = window.URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
+          anchor.href = url;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          window.URL.revokeObjectURL(url);
+
+          setStatus("Done! Your converted label was downloaded.");
+          form.reset();
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || "Something went wrong.", true);
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

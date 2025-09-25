@@ -1,0 +1,45 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / distribution
+build/
+dist/
+*.egg-info/
+
+# Test & coverage artifacts
+.pytest_cache/
+.coverage*
+htmlcov/
+
+# Logs and local settings
+*.log
+*.pid
+*.sqlite3
+.env
+.env.*
+
+# IDE / editor folders
+.vscode/
+.idea/
+*.code-workspace
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Local data folders (kept empty via .gitkeep)
+inputs/*
+!inputs/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Ad-hoc conversion artifacts
+out.pdf
