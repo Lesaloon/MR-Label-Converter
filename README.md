@@ -13,6 +13,11 @@ Library + FastAPI web service that reshapes Mondial Relay / InPost PDF labels in
   - Each batch also includes a ``combined-two-per-page.pdf`` that merges the uploaded labels two-per-page for easier printing
 - ♻️ Backwards-compatible CLI wrapper via `labels_fix.py` for existing scripts
 
+## UI
+
+<img width="2762" height="1300" alt="image" src="https://github.com/user-attachments/assets/042e08a0-4130-4b39-aa24-dbedb9823a50" />
+
+
 ## Prerequisites
 
 - Python 3.11 or newer (PyMuPDF requires a fairly recent Python build)
