@@ -25,6 +25,7 @@ htmlcov/
 *.sqlite3
 .env
 .env.*
+!.env.example
 
 # IDE / editor folders
 .vscode/
