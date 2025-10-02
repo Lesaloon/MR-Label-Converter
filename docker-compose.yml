@@ -5,18 +5,40 @@ services:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
-    image: label-converter-backend
+    container_name: backend
     restart: unless-stopped
     ports:
       - "8000:8000"
+    networks:
+      - web
 
   frontend:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
-    image: label-converter-frontend
+    container_name: frontend
     restart: unless-stopped
     depends_on:
       - backend
     ports:
       - "8080:80"
+    networks:
+      - web
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: mrlabel-cloudflared
+    restart: unless-stopped
+    # This uses a Tunnel Token (the simplest setup).
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - web
+
+networks:
+  web:
+    driver: bridge
