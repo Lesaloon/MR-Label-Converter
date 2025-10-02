@@ -1,25 +1,25 @@
 name: label-converter
 
 services:
-  backend:
+  mrl-backend:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
-    container_name: backend
+    container_name: mrl-backend
     restart: unless-stopped
     ports:
       - "8000:8000"
     networks:
       - web
 
-  frontend:
+  mrl-frontend:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
-    container_name: frontend
+    container_name: mrl-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - mrl-backend
     ports:
       - "8080:80"
     networks:
@@ -34,8 +34,8 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     command: tunnel --no-autoupdate run
     depends_on:
-      - backend
-      - frontend
+      - mrl-backend
+      - mrl-frontend
     networks:
       - web
 
